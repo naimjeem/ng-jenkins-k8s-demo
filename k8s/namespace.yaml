@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ng-jenkins-demo
+  labels:
+    name: ng-jenkins-demo
+    purpose: demo
