@@ -1,4 +1,4 @@
-# Angular Jenkins Demo with Minikube Deployment
+# Jenkins Demo with Minikube Deployment
 
 This is a demo Angular application with a complete CI/CD pipeline setup using Jenkins and Kubernetes (Minikube) for local development and deployment.
 
