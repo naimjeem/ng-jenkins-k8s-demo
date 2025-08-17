@@ -30,7 +30,9 @@ pipeline {
                     
                     // Only proceed if this is main branch or manually triggered
                     if (env.BRANCH_NAME != 'main' && env.BRANCH_NAME != 'master' && !env.BUILD_CAUSE_MANUALTRIGGER) {
-                        error "Pipeline only runs on main/master branch or manual trigger. Current branch: ${BRANCH_NAME}"
+                        echo "Skipping pipeline for branch: ${BRANCH_NAME}"
+                        currentBuild.result = 'SUCCESS'
+                        return
                     }
                 }
             }
