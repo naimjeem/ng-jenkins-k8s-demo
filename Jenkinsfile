@@ -6,9 +6,36 @@ pipeline {
         DOCKER_TAG = "${env.BUILD_NUMBER}"
         KUBECONFIG = '/var/jenkins_home/.kube/config'
         MINIKUBE_IP = '192.168.49.2' // Default Minikube IP, adjust if needed
+        BRANCH_NAME = "${env.BRANCH_NAME ?: env.GIT_BRANCH ?: 'main'}"
+        COMMIT_HASH = "${env.GIT_COMMIT ?: 'unknown'}"
+        COMMIT_AUTHOR = "${env.GIT_AUTHOR_NAME ?: 'unknown'}"
+        COMMIT_MESSAGE = "${env.GIT_COMMIT_MESSAGE ?: 'No commit message'}"
+    }
+    
+    // Only run pipeline for main branch or when manually triggered
+    options {
+        skipDefaultCheckout(false)
+        timestamps()
+        ansiColor('xterm')
     }
     
     stages {
+        stage('Branch Check') {
+            steps {
+                script {
+                    echo "Building branch: ${BRANCH_NAME}"
+                    echo "Commit: ${COMMIT_HASH}"
+                    echo "Author: ${COMMIT_AUTHOR}"
+                    echo "Message: ${COMMIT_MESSAGE}"
+                    
+                    // Only proceed if this is main branch or manually triggered
+                    if (env.BRANCH_NAME != 'main' && env.BRANCH_NAME != 'master' && !env.BUILD_CAUSE_MANUALTRIGGER) {
+                        error "Pipeline only runs on main/master branch or manual trigger. Current branch: ${BRANCH_NAME}"
+                    }
+                }
+            }
+        }
+        
         stage('Checkout') {
             steps {
                 checkout scm
@@ -128,14 +155,41 @@ pipeline {
                     bat "docker rmi ${DOCKER_IMAGE}:${DOCKER_TAG} || true"
                 }
             }
+            
+            // Archive build artifacts
+            archiveArtifacts artifacts: 'dist/**/*', fingerprint: true
         }
         
         success {
-            echo "Pipeline completed successfully! App deployed to Minikube at http://${MINIKUBE_IP}:30080"
+            script {
+                echo "🎉 Pipeline completed successfully!"
+                echo "Branch: ${BRANCH_NAME}"
+                echo "Commit: ${COMMIT_HASH}"
+                echo "Author: ${COMMIT_AUTHOR}"
+                echo "App deployed to Minikube at http://${MINIKUBE_IP}:30080"
+                
+                // Add success badge
+                currentBuild.description = "✅ Success - ${BRANCH_NAME} (${COMMIT_HASH.take(8)})"
+            }
         }
         
         failure {
-            echo "Pipeline failed! Check logs for details."
+            script {
+                echo "❌ Pipeline failed!"
+                echo "Branch: ${BRANCH_NAME}"
+                echo "Commit: ${COMMIT_HASH}"
+                echo "Author: ${COMMIT_AUTHOR}"
+                
+                // Add failure badge
+                currentBuild.description = "❌ Failed - ${BRANCH_NAME} (${COMMIT_HASH.take(8)})"
+            }
+        }
+        
+        aborted {
+            script {
+                echo "⏹️ Pipeline aborted!"
+                currentBuild.description = "⏹️ Aborted - ${BRANCH_NAME}"
+            }
         }
     }
 }
