@@ -2,7 +2,7 @@
 
 This is a demo Angular application with a complete CI/CD pipeline setup using Jenkins and Kubernetes (Minikube) for local development and deployment.
 
-## 🚀 Features
+## 🚀 Features 
 
 - **Angular 17** application with modern UI
 - **Jenkins Pipeline** for automated CI/CD
