@@ -1,6 +1,19 @@
 pipeline {
     agent any
     
+    parameters {
+        booleanParam(
+            name: 'RUN_TESTS',
+            defaultValue: true,
+            description: 'Whether to run unit tests during the pipeline'
+        )
+        booleanParam(
+            name: 'DEPLOY_TO_K8S',
+            defaultValue: true,
+            description: 'Whether to deploy to Kubernetes/Minikube'
+        )
+    }
+    
     environment {
         DOCKER_IMAGE = 'ng-jenkins-demo'
         DOCKER_TAG = "${env.BUILD_NUMBER}"
@@ -130,25 +143,81 @@ pipeline {
         }
         
         stage('Deploy to Minikube') {
+            when {
+                expression { params.DEPLOY_TO_K8S }
+            }
             steps {
                 script {
-                    // Update Kubernetes deployment
+                    // Check if kubectl is available
                     if (isUnix()) {
+                        sh 'which kubectl || echo "kubectl not found, skipping deployment"'
+                        sh 'kubectl version --client || echo "kubectl client not working"'
+                        
+                        // Check if deployment exists, if not create it
                         sh """
-                            kubectl set image deployment/ng-jenkins-demo ng-jenkins-demo=${DOCKER_IMAGE}:${DOCKER_TAG} --record
-                            kubectl rollout status deployment/ng-jenkins-demo
+                            if ! kubectl get deployment ng-jenkins-demo >/dev/null 2>&1; then
+                                echo "Deployment ng-jenkins-demo not found, creating it..."
+                                kubectl apply -f k8s/deployment.yaml -f k8s/namespace.yaml || echo "Failed to create deployment"
+                            else
+                                echo "Deployment exists, updating image..."
+                                kubectl set image deployment/ng-jenkins-demo ng-jenkins-demo=${DOCKER_IMAGE}:${DOCKER_TAG} --record || echo "Failed to update image"
+                            fi
+                            
+                            # Wait for deployment to be ready
+                            kubectl rollout status deployment/ng-jenkins-demo --timeout=300s || echo "Deployment rollout failed or timed out"
                         """
                     } else {
+                        bat 'where kubectl || echo kubectl not found, skipping deployment'
+                        bat 'kubectl version --client || echo kubectl client not working'
+                        
+                        // Check if deployment exists, if not create it
                         bat """
-                            kubectl set image deployment/ng-jenkins-demo ng-jenkins-demo=${DOCKER_IMAGE}:${DOCKER_TAG} --record
-                            kubectl rollout status deployment/ng-jenkins-demo
+                            kubectl get deployment ng-jenkins-demo >nul 2>&1 || (
+                                echo Deployment ng-jenkins-demo not found, creating it...
+                                kubectl apply -f k8s/deployment.yaml -f k8s/namespace.yaml || echo Failed to create deployment
+                            )
+                            
+                            if exist deployment ng-jenkins-demo (
+                                echo Deployment exists, updating image...
+                                kubectl set image deployment/ng-jenkins-demo ng-jenkins-demo=${DOCKER_IMAGE}:${DOCKER_TAG} --record || echo Failed to update image
+                            )
+                            
+                            REM Wait for deployment to be ready
+                            kubectl rollout status deployment/ng-jenkins-demo --timeout=300s || echo Deployment rollout failed or timed out
                         """
+                    }
+                }
+            }
+            post {
+                always {
+                    script {
+                        if (isUnix()) {
+                            sh 'kubectl get pods -l app=ng-jenkins-demo || echo "No pods found"'
+                            sh 'kubectl get services -l app=ng-jenkins-demo || echo "No services found"'
+                        } else {
+                            bat 'kubectl get pods -l app=ng-jenkins-demo || echo No pods found'
+                            bat 'kubectl get services -l app=ng-jenkins-demo || echo No services found'
+                        }
                     }
                 }
             }
         }
         
+        stage('Skip Deployment') {
+            when {
+                expression { !params.DEPLOY_TO_K8S }
+            }
+            steps {
+                script {
+                    echo "Skipping Kubernetes deployment as requested by user"
+                }
+            }
+        }
+        
         stage('Health Check') {
+            when {
+                expression { params.DEPLOY_TO_K8S }
+            }
             steps {
                 script {
                     // Wait for deployment to be ready
@@ -185,10 +254,15 @@ pipeline {
                 echo "Branch: ${BRANCH_NAME}"
                 echo "Commit: ${COMMIT_HASH}"
                 echo "Author: ${COMMIT_AUTHOR}"
-                echo "App deployed to Minikube at http://${MINIKUBE_IP}:30080"
+                echo "Tests run: ${params.RUN_TESTS ? 'Yes' : 'No'}"
+                echo "Deployment: ${params.DEPLOY_TO_K8S ? 'Yes' : 'No'}"
+                
+                if (params.DEPLOY_TO_K8S) {
+                    echo "App deployed to Minikube at http://${MINIKUBE_IP}:30080"
+                }
                 
                 // Add success badge
-                currentBuild.description = "✅ Success - ${BRANCH_NAME} (${COMMIT_HASH.take(8)})"
+                currentBuild.description = "✅ Success - ${BRANCH_NAME} (${COMMIT_HASH.take(8)}) - Tests: ${params.RUN_TESTS ? 'Yes' : 'No'}, Deploy: ${params.DEPLOY_TO_K8S ? 'Yes' : 'No'}"
             }
         }
         
@@ -198,9 +272,11 @@ pipeline {
                 echo "Branch: ${BRANCH_NAME}"
                 echo "Commit: ${COMMIT_HASH}"
                 echo "Author: ${COMMIT_AUTHOR}"
+                echo "Tests run: ${params.RUN_TESTS ? 'Yes' : 'No'}"
+                echo "Deployment: ${params.DEPLOY_TO_K8S ? 'Yes' : 'No'}"
                 
                 // Add failure badge
-                currentBuild.description = "❌ Failed - ${BRANCH_NAME} (${COMMIT_HASH.take(8)})"
+                currentBuild.description = "❌ Failed - ${BRANCH_NAME} (${COMMIT_HASH.take(8)}) - Tests: ${params.RUN_TESTS ? 'Yes' : 'No'}, Deploy: ${params.DEPLOY_TO_K8S ? 'Yes' : 'No'}"
             }
         }
         
