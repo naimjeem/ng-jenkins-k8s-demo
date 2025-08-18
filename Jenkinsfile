@@ -132,17 +132,12 @@ pipeline {
         stage('Deploy to Minikube') {
             steps {
                 script {
-                    // Update Kubernetes deployment
                     if (isUnix()) {
-                        sh """
-                            kubectl set image deployment/ng-jenkins-demo ng-jenkins-demo=${DOCKER_IMAGE}:${DOCKER_TAG} --record
-                            kubectl rollout status deployment/ng-jenkins-demo
-                        """
+                        sh 'minikube kubectl -- set image deployment/ng-jenkins-demo ng-jenkins-demo=${DOCKER_IMAGE}:${DOCKER_TAG} --record'
+                        sh 'minikube kubectl -- rollout status deployment/ng-jenkins-demo'
                     } else {
-                        bat """
-                            kubectl set image deployment/ng-jenkins-demo ng-jenkins-demo=${DOCKER_IMAGE}:${DOCKER_TAG} --record
-                            kubectl rollout status deployment/ng-jenkins-demo
-                        """
+                        bat 'minikube kubectl -- set image deployment/ng-jenkins-demo ng-jenkins-demo=${DOCKER_IMAGE}:${DOCKER_TAG} --record'
+                        bat 'minikube kubectl -- rollout status deployment/ng-jenkins-demo'
                     }
                 }
             }
