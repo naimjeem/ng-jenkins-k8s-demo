@@ -40,6 +40,24 @@ pipeline {
         buildDiscarder(logRotator(numToKeepStr: '10'))
     }
     
+    parameters {
+        booleanParam(
+            name: 'RUN_TESTS',
+            defaultValue: true,
+            description: 'Whether to run unit tests during the pipeline'
+        )
+        booleanParam(
+            name: 'DEPLOY_TO_K8S',
+            defaultValue: true,
+            description: 'Whether to deploy to Kubernetes/Minikube'
+        )
+        booleanParam(
+            name: 'FAIL_ON_TEST_ERRORS',
+            defaultValue: false,
+            description: 'Whether to fail the pipeline if tests fail (false = continue despite test failures)'
+        )
+    }
+    
     stages {
         stage('Branch Check') {
             steps {
@@ -103,9 +121,9 @@ pipeline {
             steps {
                 script {
                     if (isUnix()) {
-                        sh 'npm run test -- --watch=false --browsers=ChromeHeadless || true'
+                        sh 'npm run test -- --watch=false --browsers=ChromeHeadless || echo "Tests failed but continuing pipeline"'
                     } else {
-                        bat 'npm run test -- --watch=false --browsers=ChromeHeadless || exit 0'
+                        bat 'npm run test -- --watch=false --browsers=ChromeHeadless || echo Tests failed but continuing pipeline'
                     }
                 }
             }
@@ -114,8 +132,22 @@ pipeline {
                     publishTestResults testResultsPattern: '**/test-results.xml'
                     publishCoverage adapters: [coberturaAdapter('**/coverage/cobertura-coverage.xml')]
                     script {
-                        // Always mark test stage as successful for now
-                        currentBuild.result = 'SUCCESS'
+                        echo "Test stage completed - pipeline will continue regardless of test results"
+                    }
+                }
+                success {
+                    echo "✅ Tests passed successfully"
+                }
+                failure {
+                    script {
+                        if (params.FAIL_ON_TEST_ERRORS) {
+                            echo "❌ Tests failed and FAIL_ON_TEST_ERRORS is true - failing pipeline"
+                            currentBuild.result = 'FAILURE'
+                            error "Tests failed and pipeline is configured to fail on test errors"
+                        } else {
+                            echo "⚠️ Tests failed but FAIL_ON_TEST_ERRORS is false - continuing pipeline"
+                            echo "Pipeline will proceed to build stage despite test failures"
+                        }
                     }
                 }
             }
@@ -248,6 +280,7 @@ pipeline {
                 echo "Commit: ${COMMIT_HASH}"
                 echo "Author: ${COMMIT_AUTHOR}"
                 echo "Tests run: ${params.RUN_TESTS ? 'Yes' : 'No'}"
+                echo "Fail on test errors: ${params.FAIL_ON_TEST_ERRORS ? 'Yes' : 'No'}"
                 echo "Deployment: ${params.DEPLOY_TO_K8S ? 'Yes' : 'No'}"
                 
                 if (params.DEPLOY_TO_K8S) {
@@ -267,9 +300,12 @@ pipeline {
                 echo "Branch: ${BRANCH_NAME}"
                 echo "Commit: ${COMMIT_HASH}"
                 echo "Author: ${COMMIT_AUTHOR}"
+                echo "Tests run: ${params.RUN_TESTS ? 'Yes' : 'No'}"
+                echo "Fail on test errors: ${params.FAIL_ON_TEST_ERRORS ? 'Yes' : 'No'}"
+                echo "Deployment: ${params.DEPLOY_TO_K8S ? 'Yes' : 'No'}"
                 
                 // Add failure badge
-                currentBuild.description = "❌ Failed - ${BRANCH_NAME} (${COMMIT_HASH.take(8)})"
+                currentBuild.description = "❌ Failed - ${BRANCH_NAME} (${COMMIT_HASH.take(8)}) - Tests: ${params.RUN_TESTS ? 'Yes' : 'No'}, Deploy: ${params.DEPLOY_TO_K8S ? 'Yes' : 'No'}"
             }
         }
         
