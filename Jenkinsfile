@@ -133,11 +133,17 @@ pipeline {
             steps {
                 script {
                     if (isUnix()) {
-                        sh 'minikube kubectl -- set image deployment/ng-jenkins-demo ng-jenkins-demo=${DOCKER_IMAGE}:${DOCKER_TAG} --record'
-                        sh 'minikube kubectl -- rollout status deployment/ng-jenkins-demo'
+                        sh """
+                            export KUBECONFIG=\$(minikube kubectl -- config view --minify --output 'jsonpath={.clusters[0].cluster.server}')
+                            kubectl set image deployment/ng-jenkins-demo ng-jenkins-demo=${DOCKER_IMAGE}:${DOCKER_TAG} --record
+                            kubectl rollout status deployment/ng-jenkins-demo
+                        """
                     } else {
-                        bat 'minikube kubectl -- set image deployment/ng-jenkins-demo ng-jenkins-demo=${DOCKER_IMAGE}:${DOCKER_TAG} --record'
-                        bat 'minikube kubectl -- rollout status deployment/ng-jenkins-demo'
+                        bat """
+                            for /f "tokens=*" %%i in ('minikube kubectl -- config view --minify --output jsonpath={.clusters[0].cluster.server}') do set KUBECONFIG=%%i
+                            kubectl set image deployment/ng-jenkins-demo ng-jenkins-demo=${DOCKER_IMAGE}:${DOCKER_TAG} --record
+                            kubectl rollout status deployment/ng-jenkins-demo
+                        """
                     }
                 }
             }
